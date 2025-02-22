@@ -5,18 +5,18 @@ use std::{
     future::Future,
     io::Write,
     net::{Ipv6Addr, SocketAddr},
-    sync::{atomic::AtomicU16, Arc},
+    sync::{Arc, atomic::AtomicU16},
 };
 
 use assert_cmd::Command;
-use axum::{extract::Path, response::Redirect, routing::get, Router};
+use axum::{Router, extract::Path, response::Redirect, routing::get};
 use http::{HeaderMap, Request, Response};
 use http_body_util::BodyExt;
 use http_mitm_proxy::MitmProxy;
 use hyper::{
     body::{Body, Incoming},
     http,
-    service::{service_fn, HttpService},
+    service::{HttpService, service_fn},
 };
 use hyper_util::rt::{TokioExecutor, TokioIo};
 
@@ -300,6 +300,62 @@ async fn burst_10_req_delay_2s_rate_4(iteration: u8, args: &[&str]) -> usize {
         count += 1;
     }
     count
+}
+
+// Randomly spread 100 requests on two matching --connect-to targets, and return a count for each
+async fn distribution_on_two_matching_connect_to(host: &'static str) -> (i32, i32) {
+    let (tx1, rx1) = flume::unbounded();
+    let (tx2, rx2) = flume::unbounded();
+
+    let app1 = Router::new().route(
+        "/",
+        get(move || async move {
+            tx1.send(()).unwrap();
+            "Success1"
+        }),
+    );
+
+    let app2 = Router::new().route(
+        "/",
+        get(move || async move {
+            tx2.send(()).unwrap();
+            "Success2"
+        }),
+    );
+
+    let (listener1, port1) = bind_port().await;
+    tokio::spawn(async { axum::serve(listener1, app1).await });
+
+    let (listener2, port2) = bind_port().await;
+    tokio::spawn(async { axum::serve(listener2, app2).await });
+
+    tokio::task::spawn_blocking(move || {
+        Command::cargo_bin("oha")
+            .unwrap()
+            .args(["-n", "100", "--no-tui"])
+            .arg(format!("http://{host}/"))
+            .arg("--connect-to")
+            .arg(format!("{host}:80:localhost:{port1}"))
+            .arg("--connect-to")
+            .arg(format!("{host}:80:localhost:{port2}"))
+            .assert()
+            .success();
+    })
+    .await
+    .unwrap();
+
+    let mut count1 = 0;
+    let mut count2 = 0;
+    loop {
+        if rx1.try_recv().is_ok() {
+            count1 += 1;
+        } else if rx2.try_recv().is_ok() {
+            count2 += 1;
+        } else {
+            break;
+        }
+    }
+    (count1, count2)
 }
 
 #[tokio::test]
@@ -597,6 +653,13 @@ async fn test_connect_to() {
 }
 
 #[tokio::test]
+async fn test_connect_to_randomness() {
+    let (count1, count2) = distribution_on_two_matching_connect_to("invalid.example.org").await;
+    assert!(count1 >= 10 && count2 >= 10); // should not be too flaky with 100 coin tosses
+    assert!(count1 + count2 == 100);
+}
+
+#[tokio::test]
 async fn test_connect_to_ipv6_target() {
     assert_eq!(
         get_host_with_connect_to_ipv6_target("invalid.example.org").await,
@@ -800,33 +863,31 @@ async fn test_proxy_with_setting(https: bool, http2: bool, proxy_http2: bool) {
 
     tokio::spawn(proxy_serve);
 
-    let cargo_bin = Command::cargo_bin("oha").unwrap();
-    let mut proc = std::process::Command::new(cargo_bin.get_program());
-    std::mem::drop(cargo_bin);
+    let mut args = Vec::new();
 
     let scheme = if https { "https" } else { "http" };
-    proc.args(["--no-tui", "--debug", "--insecure", "-x"])
-        .arg(format!("http://127.0.0.1:{proxy_port}/"))
-        .args(["--proxy-header", "proxy-authorization: test"])
-        .arg(format!("{scheme}://example.com/"));
+    args.extend(
+        ["--no-tui", "--debug", "--insecure", "-x"]
+            .into_iter()
+            .map(|s| s.to_string()),
+    );
+    args.push(format!("http://127.0.0.1:{proxy_port}/"));
+    args.extend(
+        ["--proxy-header", "proxy-authorization: test"]
+            .into_iter()
+            .map(|s| s.to_string()),
+    );
+    args.push(format!("{scheme}://example.com/"));
     if http2 {
-        proc.arg("--http2");
+        args.push("--http2".to_string());
     }
     if proxy_http2 {
-        proc.arg("--proxy-http2");
+        args.push("--proxy-http2".to_string());
     }
 
-    // When std::process::Stdio::piped() is used, the wait_with_output() method will hang in Windows.
-    proc.stdin(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit());
-    let mut child = proc.spawn().unwrap();
-    assert!(
-        tokio::task::spawn_blocking(move || { child.wait().unwrap() })
-            .await
-            .unwrap()
-            .success()
-    );
+    use clap::Parser;
+    let opts = oha::Opts::try_parse_from(args).unwrap();
+    oha::run(opts).await.unwrap();
 }
 
 #[tokio::test]
@@ -914,7 +975,7 @@ async fn test_json_schema() {
 }
 
 fn setup_mtls_server(
-    dir: &std::path::Path,
+    dir: std::path::PathBuf,
 ) -> (u16, impl Future<Output = Result<(), std::io::Error>>) {
     let port = PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -980,7 +1041,7 @@ fn setup_mtls_server(
 #[tokio::test]
 async fn test_mtls() {
     let dir = tempfile::tempdir().unwrap();
-    let (port, server) = setup_mtls_server(dir.path());
+    let (port, server) = setup_mtls_server(dir.path().to_path_buf());
 
     tokio::spawn(server);
 

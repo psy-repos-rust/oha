@@ -56,7 +56,7 @@ pub(crate) struct ClientStateHttp3 {
 impl ClientStateHttp3 {
     fn new(send_request: h3::client::SendRequest<h3_quinn::OpenStreams, Bytes>) -> Self {
         Self {
-            rng: SeedableRng::from_os_rng(),
+            rng: SeedableRng::from_rng(&mut rand::rng()),
             send_request,
         }
     }
@@ -290,7 +290,7 @@ async fn create_and_load_up_single_connection_http3(
     client: Arc<Client>,
     s: Arc<Semaphore>,
 ) {
-    let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+    let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
     loop {
         // create a HTTP3 connection
         match setup_http3(&client, &mut rng).await {
@@ -469,7 +469,7 @@ pub(crate) fn http3_connection_fast_work_until(
         local.spawn_local(Box::pin(async move {
             let mut has_err = false;
             let mut result_data_err = ResultData::default();
-            let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+            let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
             loop {
                 let client = client.clone();
                 match setup_http3(&client, &mut rng).await {

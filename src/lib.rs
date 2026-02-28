@@ -789,7 +789,7 @@ pub async fn run(mut opts: Opts) -> anyhow::Result<()> {
                     } => {
                         if let Some(query_limit) = query_limit {
                             if latency_correction {
-                                client::work_with_qps(
+                                client::work_with_qps_latency_correction(
                                     client.clone(),
                                     result_tx,
                                     query_limit,
@@ -799,7 +799,7 @@ pub async fn run(mut opts: Opts) -> anyhow::Result<()> {
                                 )
                                 .await;
                             } else {
-                                client::work_with_qps_latency_correction(
+                                client::work_with_qps(
                                     client.clone(),
                                     result_tx,
                                     query_limit,

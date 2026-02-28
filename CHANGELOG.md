@@ -1,5 +1,9 @@
 # Unreleased
 
+# 1.14.0
+
+- fix Possible bug with latency_correction #857
+
 # 1.13.0 (2025-02-07)
 
 - Add first byte stats to JSON output#844

@@ -118,7 +118,7 @@ mod tests {
         );
 
         for _ in 0..100 {
-            let rng: Pcg64Si = SeedableRng::from_os_rng();
+            let rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
 
             assert_eq!(
                 url_generator.generate(&mut rng.clone()).unwrap(),
@@ -140,7 +140,7 @@ mod tests {
             UrlGenerator::new_multi_static(urls.iter().map(|u| Url::parse(u).unwrap()).collect());
 
         for _ in 0..100 {
-            let rng: Pcg64Si = SeedableRng::from_os_rng();
+            let rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
 
             assert_eq!(
                 url_generator.generate(&mut rng.clone()).unwrap(),

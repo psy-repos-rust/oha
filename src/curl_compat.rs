@@ -74,10 +74,7 @@ impl Form {
         body
     }
     fn generate_boundary() -> String {
-        use rand::Rng;
-
-        let mut rng = rand::rng();
-        let random_bytes: [u8; 16] = rng.random();
+        let random_bytes: [u8; 16] = rand::random();
 
         // Convert to hex string manually to avoid external hex dependency
         let hex_string = random_bytes

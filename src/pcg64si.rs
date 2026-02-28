@@ -1,5 +1,7 @@
+use std::convert::Infallible;
+
 // https://github.com/imneme/pcg-c
-use rand::{RngCore, SeedableRng, rand_core::impls::fill_bytes_via_next};
+use rand::{SeedableRng, TryRng, rand_core::utils::fill_bytes_via_next_word};
 
 #[derive(Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -7,12 +9,14 @@ pub struct Pcg64Si {
     state: u64,
 }
 
-impl RngCore for Pcg64Si {
-    fn next_u32(&mut self) -> u32 {
-        self.next_u64() as u32
+impl TryRng for Pcg64Si {
+    type Error = Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(self.try_next_u64()? as u32)
     }
 
-    fn next_u64(&mut self) -> u64 {
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
         let old_state = self.state;
         self.state = self
             .state
@@ -21,11 +25,11 @@ impl RngCore for Pcg64Si {
 
         let word =
             ((old_state >> ((old_state >> 59) + 5)) ^ old_state).wrapping_mul(12605985483714917081);
-        (word >> 43) ^ word
+        Ok((word >> 43) ^ word)
     }
 
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        fill_bytes_via_next(self, dest)
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+        fill_bytes_via_next_word(dest, || self.try_next_u64())
     }
 }
 
@@ -42,6 +46,7 @@ impl SeedableRng for Pcg64Si {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::Rng;
     use std::collections::HashSet;
 
     // For a given seed the RNG is deterministic

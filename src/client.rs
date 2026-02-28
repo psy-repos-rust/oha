@@ -4,7 +4,7 @@ use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request, http};
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use rand::prelude::*;
+use rand::{prelude::*, rng};
 use std::{
     borrow::Cow,
     io::Write,
@@ -284,7 +284,7 @@ struct ClientStateHttp1 {
 impl Default for ClientStateHttp1 {
     fn default() -> Self {
         Self {
-            rng: SeedableRng::from_os_rng(),
+            rng: SeedableRng::from_rng(&mut rand::rng()),
             send_request: None,
         }
     }
@@ -455,7 +455,7 @@ impl Client {
             return Ok(());
         }
 
-        let mut rng = StdRng::from_os_rng();
+        let mut rng = rand::rng();
         let url = self.request_generator.url_generator.generate(&mut rng)?;
         // It automatically caches the result
         self.dns.lookup(&url, &mut rng).await?;
@@ -1104,7 +1104,7 @@ pub(crate) fn set_start_latency_correction<E>(
 }
 
 pub async fn work_debug<W: Write>(w: &mut W, client: Arc<Client>) -> Result<(), ClientError> {
-    let mut rng = Pcg64Si::from_os_rng();
+    let mut rng = Pcg64Si::from_rng(&mut rng());
     let (url, request, _) = client.generate_request(&mut rng)?;
 
     writeln!(w, "{request:#?}")?;
@@ -1167,7 +1167,7 @@ pub async fn work(
                     let counter = counter.clone();
                     let client = client.clone();
                     tokio::spawn(async move {
-                        let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                        let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                         loop {
                             match setup_http2(&client, &mut rng).await {
                                 Ok((connection_time, send_request)) => {
@@ -1178,7 +1178,7 @@ pub async fn work(
                                             let client = client.clone();
 
                                             let mut client_state = ClientStateHttp2 {
-                                                rng: SeedableRng::from_os_rng(),
+                                                rng: SeedableRng::from_rng(&mut rand::rng()),
                                                 send_request: send_request.clone(),
                                             };
                                             tokio::spawn(async move {
@@ -1338,7 +1338,7 @@ pub async fn work_with_qps(
                     let rx = rx.clone();
                     let client = client.clone();
                     tokio::spawn(async move {
-                        let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                        let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                         loop {
                             match setup_http2(&client, &mut rng).await {
                                 Ok((connection_time, send_request)) => {
@@ -1348,7 +1348,7 @@ pub async fn work_with_qps(
                                             let rx = rx.clone();
                                             let client = client.clone();
                                             let mut client_state = ClientStateHttp2 {
-                                                rng: SeedableRng::from_os_rng(),
+                                                rng: SeedableRng::from_rng(&mut rand::rng()),
                                                 send_request: send_request.clone(),
                                             };
                                             tokio::spawn(async move {
@@ -1512,7 +1512,7 @@ pub async fn work_with_qps_latency_correction(
                     let rx = rx.clone();
                     let client = client.clone();
                     tokio::spawn(async move {
-                        let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                        let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                         loop {
                             match setup_http2(&client, &mut rng).await {
                                 Ok((connection_time, send_request)) => {
@@ -1522,7 +1522,7 @@ pub async fn work_with_qps_latency_correction(
                                             let rx = rx.clone();
                                             let client = client.clone();
                                             let mut client_state = ClientStateHttp2 {
-                                                rng: SeedableRng::from_os_rng(),
+                                                rng: SeedableRng::from_rng(&mut rand::rng()),
                                                 send_request: send_request.clone(),
                                             };
                                             tokio::spawn(async move {
@@ -1650,7 +1650,7 @@ pub async fn work_until(
                     tokio::spawn(async move {
                         let s = s.clone();
                         // Keep trying to establish or re-establish connections up to the deadline
-                        let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                        let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                         loop {
                             match setup_http2(&client, &mut rng).await {
                                 Ok((connection_time, send_request)) => {
@@ -1660,7 +1660,7 @@ pub async fn work_until(
                                             let client = client.clone();
                                             let report_tx = report_tx.clone();
                                             let mut client_state = ClientStateHttp2 {
-                                                rng: SeedableRng::from_os_rng(),
+                                                rng: SeedableRng::from_rng(&mut rand::rng()),
                                                 send_request: send_request.clone(),
                                             };
                                             let s = s.clone();
@@ -1855,7 +1855,7 @@ pub async fn work_until_with_qps(
                     let rx = rx.clone();
                     let s = s.clone();
                     tokio::spawn(async move {
-                        let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                        let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                         loop {
                             match setup_http2(&client, &mut rng).await {
                                 Ok((connection_time, send_request)) => {
@@ -1865,7 +1865,7 @@ pub async fn work_until_with_qps(
                                             let report_tx = report_tx.clone();
                                             let rx = rx.clone();
                                             let mut client_state = ClientStateHttp2 {
-                                                rng: SeedableRng::from_os_rng(),
+                                                rng: SeedableRng::from_rng(&mut rand::rng()),
                                                 send_request: send_request.clone(),
                                             };
                                             let s = s.clone();
@@ -2064,7 +2064,7 @@ pub async fn work_until_with_qps_latency_correction(
                     let rx = rx.clone();
                     let s = s.clone();
                     tokio::spawn(async move {
-                        let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                        let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                         loop {
                             match setup_http2(&client, &mut rng).await {
                                 Ok((connection_time, send_request)) => {
@@ -2074,7 +2074,7 @@ pub async fn work_until_with_qps_latency_correction(
                                             let report_tx = report_tx.clone();
                                             let rx = rx.clone();
                                             let mut client_state = ClientStateHttp2 {
-                                                rng: SeedableRng::from_os_rng(),
+                                                rng: SeedableRng::from_rng(&mut rand::rng()),
                                                 send_request: send_request.clone(),
                                             };
                                             let s = s.clone();
@@ -2278,7 +2278,7 @@ pub mod fast {
                                 local.spawn_local(Box::pin(async move {
                                     let mut has_err = false;
                                     let mut result_data_err = ResultData::default();
-                                    let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                                    let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                                     loop {
                                         let client = client.clone();
                                         match setup_http2(&client, &mut rng).await {
@@ -2286,7 +2286,9 @@ pub mod fast {
                                                 let futures = (0..n_http_parallel)
                                                     .map(|_| {
                                                         let mut client_state = ClientStateHttp2 {
-                                                            rng: SeedableRng::from_os_rng(),
+                                                            rng: SeedableRng::from_rng(
+                                                                &mut rand::rng(),
+                                                            ),
                                                             send_request: send_request.clone(),
                                                         };
                                                         let counter = counter.clone();
@@ -2503,7 +2505,7 @@ pub mod fast {
                             local.spawn_local(Box::pin(async move {
                                 let mut has_err = false;
                                 let mut result_data_err = ResultData::default();
-                                let mut rng: Pcg64Si = SeedableRng::from_os_rng();
+                                let mut rng: Pcg64Si = SeedableRng::from_rng(&mut rand::rng());
                                 loop {
                                     let client = client.clone();
                                     match setup_http2(&client, &mut rng).await {
@@ -2511,7 +2513,7 @@ pub mod fast {
                                             let futures = (0..n_http_parallel)
                                                 .map(|_| {
                                                     let mut client_state = ClientStateHttp2 {
-                                                        rng: SeedableRng::from_os_rng(),
+                                                        rng: SeedableRng::from_rng(&mut rand::rng()),
                                                         send_request: send_request.clone(),
                                                     };
                                                     let client = client.clone();
